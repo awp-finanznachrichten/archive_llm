@@ -16,7 +16,7 @@ from xml.dom import minidom
 import os
 import regex
 
-# Init global vars
+# Init global variables
 alert_receivers = "mf@awp.ch"
 project_dir = os.getcwd()
 input_dir = os.path.join(project_dir, "_input")
