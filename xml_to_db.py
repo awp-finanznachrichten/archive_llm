@@ -87,9 +87,15 @@ for file in files:
 
         # Detect AWP copyright
         copyright_awp = False
-        agencies = regex.search(r'\(\w+\)', text).group()
+        agencies = regex.search(r'\([^)]*\)', text).group()
         if agencies == "(awp)" or agencies == "(awp international)":
             copyright_awp = True
+
+        # Assemble complete text incl. title and byline
+        text_complete = title + "\n\n"
+        if byline is not None:
+            text_complete += byline + "\n\n"
+        text_complete += text
 
         # Extract date and time of publishing
         publish_timestamp = datetime.datetime.strptime(
@@ -147,8 +153,8 @@ for file in files:
 
         save_to_db = True
 
-        if not copyright_awp:
-            save_to_db = False  # No text from sda, dpa...
+        # if not copyright_awp:
+        #     save_to_db = False  # No text from sda, dpa...
 
         if repetition:
             save_to_db = False  # No Wdh
@@ -170,31 +176,47 @@ for file in files:
         # Measuring #
         #############
 
-        # Word count
-        word_count = len(regex.findall(r'\w+', text))
+        if save_to_db:
 
-        # Token count
-        token_count = len(encoding.encode(text))
+            # Word count
+            word_count = len(regex.findall(r'\w+', text_complete))
 
-        print("Number of words: " + str(word_count))
-        print("Number of tokens: " + str(token_count))
+            # Token count
+            token_count = len(encoding.encode(text_complete))
+
+            print("Number of words: " + str(word_count))
+            print("Number of tokens: " + str(token_count))
 
 
         ##############
         # Save to DB #
         ##############
 
-        sql_stmt = f'INSERT INTO archive.archive_llm ' \
-                   f'(publish_date, publish_time, title, text, authors, ' \
-                   f'copyright_awp, word_count, token_count_openai, wire, language, ' \
-                   f'subjects, industries, countries, ' \
-                   f'companies_id_BW2, companies_name) ' \
-                   f'VALUES (\'{publish_date}\', \'{publish_time}\', \'{title}\', \'{text}\', \'{authors}\', ' \
-                   f'{int(copyright_awp)}, {word_count}, {token_count}, \'{wire}\', \'{language}\', ' \
-                   f'\'{" ".join(subjects)}\', \'{" ".join(industries)}\', \'{" ".join(countries)}\', ' \
-                   f'\'{" ".join(companies_id)}\', \'{" ".join(companies_name)}\');'
-        archive_cursor.execute(sql_stmt)
-        archive_db.commit()
+        if save_to_db:
+
+            text = text.replace("'", "''")
+            text_complete = text_complete.replace("'", "''")
+
+            sql_stmt = f'INSERT INTO archive.archive_llm ' \
+                       f'(publish_date, publish_time, title, text_redsys, ' \
+                       f'text_incl_title_byline, copyright_awp, word_count, token_count_openai, ' \
+                       f'wire, language, authors, ' \
+                       f'subjects, industries, countries, ' \
+                       f'companies_id_redsys, companies_name) ' \
+                       f'VALUES (\'{publish_date}\', \'{publish_time}\', \'{title}\', \'{text}\', ' \
+                       f'\'{text_complete}\', {int(copyright_awp)}, {word_count}, {token_count}, ' \
+                       f'\'{wire}\', \'{language}\', \'{authors}\', ' \
+                       f'\'{" ".join(subjects)}\', \'{" ".join(industries)}\', \'{" ".join(countries)}\', ' \
+                       f'\'{" ".join(companies_id)}\', \'{" ".join(companies_name)}\');'
+            archive_cursor.execute(sql_stmt)
+            archive_db.commit()
+
+
+        #######################
+        # Move processed file #
+        #######################
+
+        utils.move_file(os.path.join(input_dir, file), "processed", project_dir)
 
 
     except Exception as err:
