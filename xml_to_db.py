@@ -32,7 +32,7 @@ files = []
 pattern = "*.xml"
 for directory, _, _ in os.walk(input_dir):
     files.extend(glob(os.path.join(directory, pattern)))
-print(len(files))
+print("Number of files: " + str((len(files))))
 
 # Establish DB connection
 archive_db = utils.connect_db("archive")
@@ -63,13 +63,11 @@ for file in files:
                 if node is not None:
                     byline = node.nodeValue
 
-        # Detect repetition (Wdh)
-        repetition = False
-        if regex.match("^[*]*(Wdh|WDH)\\s?\\d?[/:]?\\s?", title):
-            repetition = True
-
         # Extract text (tables will be ignored)
         text = ""
+        table_contained = False
+        paragraph_count = int(0)
+        first_paragraph_char_count = int(0)
         for node in dom.getElementsByTagName("body.content")[0]._get_childNodes():
             # nodeType must be "ELEMENT_NODE" ("\n" counts as node in minidom)
             if node.nodeType == 1:
@@ -78,18 +76,30 @@ for file in files:
                     if node.tagName == "p" or node.tagName == "h3":
                         # Paragraph
                         text += node_text
+                        paragraph_count += 1
+                        if first_paragraph_char_count == 0:
+                            first_paragraph_char_count = len(text)
+                    elif node.tagName == "pre":
+                        table_contained = True
                 elif node.tagName == "p":
                     # Line break
-                    text += "\n\n"
+                    if not text.endswith("\n\n"):
+                        text += "\n\n"
+        text = text.replace("<<", "\"").replace(">>", "\"")
 
         # Get authors from extracted text
-        authors = text.split("\n\n")[-1].replace("/", " ").strip()
+        authors = ""
+        last_paragraph = text.split("\n\n")[-1]
+        if len(last_paragraph) <= 22:  # Exceeding length means probably missing author line
+            authors = last_paragraph.replace("/", " ").strip()
 
         # Detect AWP copyright
         copyright_awp = False
-        agencies = regex.search(r'\([^)]*\)', text).group().upper()
-        if agencies == "(AWP)" or agencies == "(AWP INTERNATIONAL)":
-            copyright_awp = True
+        agencies = regex.search(r'\s\([^)]*\)', text)
+        if agencies:
+            agencies = agencies.group().upper().strip()
+            if agencies == "(AWP)" or agencies == "(AWP INTERNATIONAL)":
+                copyright_awp = True
 
         # Assemble complete text incl. title and byline
         text_complete = title + "\n\n"
@@ -113,7 +123,7 @@ for file in files:
         subjects = list()
         industries = list()
         countries = list()
-        wire = ""
+        wires = list()
         for element in dom.getElementsByTagName("Property"):
             attr = element.getAttribute("FormalName")
             if attr == "FullName":
@@ -121,7 +131,7 @@ for file in files:
             elif attr == "Company":
                 companies_id.append(element.getAttributeNode("Value").nodeValue)
             elif attr == "Wire":
-                wire = element.getAttributeNode("Value").nodeValue
+                wires.append(element.getAttributeNode("Value").nodeValue)
             elif attr == "Subject":
                 subjects.append(element.getAttributeNode("Value").nodeValue)
             elif attr == "Industry":
@@ -132,19 +142,32 @@ for file in files:
         print("-----------------")
         print(file)
         print("Title: " + title)
-        print("Wdh: " + str(repetition))
         print("Byline: " + str(byline))
         print("Companies (Name): " + str(companies_name))
         print("Companies (BW2 ID): " + str(companies_id))
         print("Subjects: " + str(subjects))
         print("Industries: " + str(industries))
         print("Countries: " + str(countries))
-        print("Wire: " + str(wire))
+        print("Wires: " + str(wires))
         print("Authors: " + authors)
         print("Publish date: " + publish_date)
         print("Publish time: " + publish_time)
         print("Language: " + language)
         print(text)
+
+
+        #############
+        # Measuring #
+        #############
+
+        # Word count
+        word_count = len(regex.findall(r'\w+', text_complete))
+
+        # Token count
+        token_count = len(encoding.encode(text_complete))
+
+        print("Number of words: " + str(word_count))
+        print("Number of tokens: " + str(token_count))
 
 
         #############
@@ -156,36 +179,43 @@ for file in files:
         # if not copyright_awp:
         #     save_to_db = False  # No text from sda, dpa...
 
+        # Repetition (Wdh / répétition)
+        repetition = False
+        if regex.match("^[*]*(Wdh|WDH)\\s?\\d?[/:]?\\s?", title):
+            repetition = True
+        if byline:
+            if byline == "(répétition)":
+                repetition = True
         if repetition:
-            save_to_db = False  # No Wdh
-
-        if title.startswith("***"):  # No flashes
             save_to_db = False
 
+        # Flash
+        if title.startswith("***"):
+            save_to_db = False
+
+        # Table
+        if ("(Tabelle)" in title) or ("(tableau)" in title):
+            save_to_db = False
+        if table_contained and paragraph_count == 1 and first_paragraph_char_count < 160:
+            save_to_db = False  # Only one very short paragraph
+        if table_contained and word_count < 40:
+            save_to_db = False  # Text besides table too short
+
+        # Impressum, Abkürzungen...
         if "SER" in subjects:
-            save_to_db = False  # No Impressum, Abkürzungen...
+            save_to_db = False
 
+        # Terminvorschau...
         if "CAL" in subjects:
-            save_to_db = False  # No Terminvorschau...
+            save_to_db = False
 
-        if not wire in wires_permitted:
-            save_to_db = False  # Only P, K, N
-
-
-        #############
-        # Measuring #
-        #############
-
-        if save_to_db:
-
-            # Word count
-            word_count = len(regex.findall(r'\w+', text_complete))
-
-            # Token count
-            token_count = len(encoding.encode(text_complete))
-
-            print("Number of words: " + str(word_count))
-            print("Number of tokens: " + str(token_count))
+        # Wire
+        one_wire_ok = False
+        for wire in wires:
+            if wire in wires_permitted: # Only P, K, N
+                one_wire_ok = True
+        if not one_wire_ok:
+            save_to_db = False
 
 
         ##############
@@ -194,20 +224,29 @@ for file in files:
 
         if save_to_db:
 
+            # Prep data for SQL
+            title = title.replace("'", "''")
             text = text.replace("'", "''")
             text_complete = text_complete.replace("'", "''")
+            authors = authors.replace("'", "''")
+            wires = " ".join(wires)
+            subjects = " ".join(subjects)
+            industries = " ".join(industries)
+            countries = " ".join(countries)
+            companies_id = " ".join(companies_id)
+            companies_name = " | ".join(companies_name).replace("'", "''")
 
             sql_stmt = f'INSERT INTO archive.archive_llm ' \
                        f'(publish_date, publish_time, title, text_redsys, ' \
                        f'text_incl_title_byline, copyright_awp, word_count, token_count_openai, ' \
-                       f'wire, language, authors, ' \
+                       f'wires, language, authors, ' \
                        f'subjects, industries, countries, ' \
                        f'companies_id_redsys, companies_name) ' \
                        f'VALUES (\'{publish_date}\', \'{publish_time}\', \'{title}\', \'{text}\', ' \
                        f'\'{text_complete}\', {int(copyright_awp)}, {word_count}, {token_count}, ' \
-                       f'\'{wire}\', \'{language}\', \'{authors}\', ' \
-                       f'\'{" ".join(subjects)}\', \'{" ".join(industries)}\', \'{" ".join(countries)}\', ' \
-                       f'\'{" ".join(companies_id)}\', \'{" | ".join(companies_name)}\');'
+                       f'\'{wires}\', \'{language}\', \'{authors}\', ' \
+                       f'\'{subjects}\', \'{industries}\', \'{countries}\', ' \
+                       f'\'{companies_id}\', \'{companies_name}\');'
             archive_cursor.execute(sql_stmt)
             archive_db.commit()
 
@@ -240,3 +279,9 @@ for file in files:
 # Close DB connection
 archive_cursor.close()
 archive_db.close()
+
+# Delete empty directories in input folder
+folders = list(os.walk(input_dir))[1:]
+for folder in folders:
+    if not folder[2]:
+        os.rmdir(folder[0])
