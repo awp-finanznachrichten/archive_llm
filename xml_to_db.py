@@ -207,7 +207,7 @@ for file in files:
                        f'\'{text_complete}\', {int(copyright_awp)}, {word_count}, {token_count}, ' \
                        f'\'{wire}\', \'{language}\', \'{authors}\', ' \
                        f'\'{" ".join(subjects)}\', \'{" ".join(industries)}\', \'{" ".join(countries)}\', ' \
-                       f'\'{" ".join(companies_id)}\', \'{" ".join(companies_name)}\');'
+                       f'\'{" ".join(companies_id)}\', \'{" | ".join(companies_name)}\');'
             archive_cursor.execute(sql_stmt)
             archive_db.commit()
 
