@@ -87,8 +87,8 @@ for file in files:
 
         # Detect AWP copyright
         copyright_awp = False
-        agencies = regex.search(r'\([^)]*\)', text).group()
-        if agencies == "(awp)" or agencies == "(awp international)":
+        agencies = regex.search(r'\([^)]*\)', text).group().upper()
+        if agencies == "(AWP)" or agencies == "(AWP INTERNATIONAL)":
             copyright_awp = True
 
         # Assemble complete text incl. title and byline
