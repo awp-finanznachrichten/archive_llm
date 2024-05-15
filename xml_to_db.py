@@ -17,6 +17,7 @@ import os
 import regex
 import datetime
 import tiktoken  # used for token counter
+import logging
 
 # Set encoding for token count
 encoding = tiktoken.get_encoding("cl100k_base")  # cl100k_base is used in GPT4, GPT3.5 etc.
@@ -27,12 +28,20 @@ alert_receivers = "mf@awp.ch"
 project_dir = os.getcwd()
 input_dir = os.path.join(project_dir, "_input")
 
+# Prepare logging
+log_dir = os.path.join(project_dir, 'logs')
+if not os.path.exists(log_dir): os.mkdir(log_dir)
+log_name = os.path.join(log_dir, datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + '_xml_to_db.log')
+logging.basicConfig(filename=log_name,
+                    level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
 # Get list of input files
 files = []
 pattern = "*.xml"
 for directory, _, _ in os.walk(input_dir):
     files.extend(glob(os.path.join(directory, pattern)))
-print("Number of files: " + str((len(files))))
+logging.info("Number of files: " + str((len(files))) + "\n")
 
 # Establish DB connection
 archive_db = utils.connect_db("archive")
@@ -54,6 +63,7 @@ for file in files:
 
         # Extract title
         title = dom.getElementsByTagName("HeadLine")[0]._get_firstChild().nodeValue
+        title = title.replace("<<", "\"").replace(">>", "\"")
 
         # Extract byline
         byline = None
@@ -86,6 +96,9 @@ for file in files:
                     if not text.endswith("\n\n"):
                         text += "\n\n"
         text = text.replace("<<", "\"").replace(">>", "\"")
+        if ("[[" in text) and ("]]" in text):
+            text = regex.sub('\[\[.+\]\]', '', text, flags=regex.DOTALL)  # Remove table
+            table_contained = True
 
         # Get authors from extracted text
         authors = ""
@@ -139,21 +152,21 @@ for file in files:
             elif attr == "Country":
                 countries.append(element.getAttributeNode("Value").nodeValue)
 
-        print("-----------------")
-        print(file)
-        print("Title: " + title)
-        print("Byline: " + str(byline))
-        print("Companies (Name): " + str(companies_name))
-        print("Companies (BW2 ID): " + str(companies_id))
-        print("Subjects: " + str(subjects))
-        print("Industries: " + str(industries))
-        print("Countries: " + str(countries))
-        print("Wires: " + str(wires))
-        print("Authors: " + authors)
-        print("Publish date: " + publish_date)
-        print("Publish time: " + publish_time)
-        print("Language: " + language)
-        print(text)
+        # print("-----------------")
+        # print(file)
+        # print("Title: " + title)
+        # print("Byline: " + str(byline))
+        # print("Companies (Name): " + str(companies_name))
+        # print("Companies (BW2 ID): " + str(companies_id))
+        # print("Subjects: " + str(subjects))
+        # print("Industries: " + str(industries))
+        # print("Countries: " + str(countries))
+        # print("Wires: " + str(wires))
+        # print("Authors: " + authors)
+        # print("Publish date: " + publish_date)
+        # print("Publish time: " + publish_time)
+        # print("Language: " + language)
+        # print(text)
 
 
         #############
@@ -166,8 +179,8 @@ for file in files:
         # Token count
         token_count = len(encoding.encode(text_complete))
 
-        print("Number of words: " + str(word_count))
-        print("Number of tokens: " + str(token_count))
+        # print("Number of words: " + str(word_count))
+        # print("Number of tokens: " + str(token_count))
 
 
         #############
@@ -200,6 +213,8 @@ for file in files:
             save_to_db = False  # Only one very short paragraph
         if table_contained and word_count < 40:
             save_to_db = False  # Text besides table too short
+        if "Innerer Wert" in title:
+            save_to_db = False
 
         # Impressum, Abkürzungen...
         if "SER" in subjects:
@@ -262,13 +277,16 @@ for file in files:
 
     except Exception as err:
 
-        # Mail alert
-        mail_subj = "Error: Archiv-Import-Prozess gescheitert"
-        mail_body = ('Der Archiv-Import-Prozess wurde aufgrund eines unerwarteten Fehlers beendet.' +
-                     '\n\nEs gab folgende Fehlermeldung:\n' + str(err) + '\n\nDie Datei  ' +
-                     file + ' wird in den Ordner ' + project_dir +
-                     '\\_erroneous verschoben.\n\nStaubige Grüsse\n\nAWP Robot')
-        utils.send_notification(mail_subj, mail_body, alert_receivers)
+        # # Mail alert
+        # mail_subj = "Error: Archiv-Import-Prozess gescheitert"
+        # mail_body = ('Der Archiv-Import-Prozess wurde aufgrund eines unerwarteten Fehlers beendet.' +
+        #              '\n\nEs gab folgende Fehlermeldung:\n' + str(err) + '\n\nDie Datei  ' +
+        #              file + ' wird in den Ordner ' + project_dir +
+        #              '\\_erroneous verschoben.\n\nStaubige Grüsse\n\nAWP Robot')
+        # utils.send_notification(mail_subj, mail_body, alert_receivers)
+
+        # Log error
+        logging.exception(str(err) + "\n" + "Datei " + file + "\n", exc_info=False)
 
         # Move file
         utils.move_file(os.path.join(input_dir, file), "erroneous", project_dir)
@@ -287,3 +305,5 @@ folders = list(os.walk(input_dir))[1:]
 for folder in folders:
     if not folder[2]:
         os.rmdir(folder[0])
+
+logging.info("Process successfully terminated")

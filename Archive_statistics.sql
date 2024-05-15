@@ -1,0 +1,1 @@
+SELECT count(*) as 'Anzahl Artikel', round(avg(word_count), 0) as 'Durchschnittliche Anzahl Wörter pro Text', sum(token_count_openai) as 'Anzahl Tokens gesamt' FROM archive.archive_llm;
