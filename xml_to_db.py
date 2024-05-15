@@ -204,6 +204,8 @@ for file in files:
         # Impressum, Abkürzungen...
         if "SER" in subjects:
             save_to_db = False
+        if ("Abkürzungen" in title) or ("Abréviations" in title):
+            save_to_db = False
 
         # Terminvorschau...
         if "CAL" in subjects:
