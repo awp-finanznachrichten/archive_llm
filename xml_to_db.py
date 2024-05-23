@@ -213,7 +213,7 @@ for file in files:
             save_to_db = False  # Only one very short paragraph
         if table_contained and word_count < 40:
             save_to_db = False  # Text besides table too short
-        if "Innerer Wert" in title:
+        if ("Innerer Wert" in title) or ("Innere Werte" in title):
             save_to_db = False
 
         # Impressum, Abkürzungen...
