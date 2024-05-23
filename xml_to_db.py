@@ -207,13 +207,13 @@ for file in files:
             save_to_db = False
 
         # Table
-        if ("(Tabelle)" in title) or ("(tableau)" in title):
+        if ("TABELLE" in title.upper()) or ("TABLEAU" in title.upper()):
             save_to_db = False
         if table_contained and paragraph_count == 1 and first_paragraph_char_count < 160:
             save_to_db = False  # Only one very short paragraph
         if table_contained and word_count < 40:
             save_to_db = False  # Text besides table too short
-        if ("Innerer Wert" in title) or ("Innere Werte" in title):
+        if ("INNERER WERT" in title.upper()) or ("INNERE WERTE" in title.upper()):
             save_to_db = False
 
         # Impressum, Abkürzungen...
