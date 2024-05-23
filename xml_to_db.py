@@ -272,7 +272,10 @@ for file in files:
         # Move processed file #
         #######################
 
-        utils.move_file(os.path.join(input_dir, file), "processed", project_dir)
+        if save_to_db:
+            utils.move_file(os.path.join(input_dir, file), "processed", project_dir)
+        else:
+            utils.move_file(os.path.join(input_dir, file), "ignored", project_dir)
 
 
     except Exception as err:
